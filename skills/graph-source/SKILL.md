@@ -26,13 +26,15 @@ in the [skardi repo](https://github.com/SkardiLabs/skardi); operational truth:
 there. When this skill and those documents
 disagree, the documents win — check them, then fix this skill.
 
-**Scope, stated so you don't promise what doesn't exist:** the shipped
-backend is AGE (milestone status M4 — `type: graph` sources, YAML
-catalog views, the `cypher_query` / `graph_schema` UDTFs, pipeline
-parameter passthrough). Neo4j and Kuzu are later milestones: the config
-carries a `backend:` field for them, but do not write configuration or
-guidance for a backend that has no implementation. Milestone one is
-read-only end to end; write paths are deferred by design.
+**Version prerequisite:** this is a preview skill for Skardi `main`, verified
+against commit [`1f2ecae`](https://github.com/SkardiLabs/skardi/commit/1f2ecae0f95b0a01232fadb815eae1c1c86efc48). Clone that revision and run
+`cargo build --release -p skardi-server`; v0.5.0 has neither `type: graph`
+sources nor the `cypher_query` / `graph_schema` UDTFs. The preview backend is
+AGE (milestone status M4 — YAML catalog views and pipeline parameter
+passthrough). Neo4j and Kuzu are later milestones: the config carries a
+`backend:` field for them, but do not write configuration or guidance for a
+backend that has no implementation. Milestone one is read-only end to end;
+write paths are deferred by design.
 
 The reason this skill exists: every trap below is real, was hit, and is
 documented — but scattered. The two that cost the most debugging time:

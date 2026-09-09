@@ -5,77 +5,16 @@
     "url": "https://github.com/SkardiLabs"
   },
   "metadata": {
-    "description": "Agent Skills for working with Skardi — SQL pipelines as HTTP endpoints. Distributes plugins that teach AI coding agents Skardi's patterns for building searchable context, hybrid search, and connectors.",
+    "description": "Agent Skills for working with Skardi — SQL pipelines as HTTP endpoints. Teaches AI coding agents Skardi's patterns for building searchable context, hybrid search, graph queries, and connectors.",
     "version": "0.4.0"
   },
   "plugins": [
     {
-      "name": "auto-context",
-      "source": "./auto-context",
-      "description": "Turn a folder of documents, a table you already have, or documents still inside a service (a wiki, cloud docs, a mailbox) into governed, searchable context an agent can query. Hybrid search (vector + full-text) served over HTTP by skardi-server. Three raw-material entries, one flow: a folder; an existing table (read-only; NDJSON for any datastore); or fetch-and-land, where your agent writes the per-source fetch code and the skill fixes the process and its reconciliation. Storage is a separate choice: defaults to a local SQLite file the skill creates and owns, or point it at Postgres+pgvector, MongoDB, or Lance when the index should live in a database you already own.",
+      "name": "skardi",
+      "source": "./",
+      "description": "Build searchable context over documents or your own datastore, answer questions from live data, and query a property graph through SQL. Bundles the auto-context, retrieval, graph-source, and graph-rag skills.",
       "category": "rag",
-      "keywords": [
-        "skardi",
-        "context",
-        "rag",
-        "knowledge-base",
-        "hybrid-search",
-        "sqlite",
-        "pgvector",
-        "mongodb",
-        "lance",
-        "skardi-server"
-      ]
-    },
-    {
-      "name": "retrieval",
-      "source": "./retrieval",
-      "description": "Answer questions from live data through a running skardi-server using the skardi CLI. Discovers sources, pipelines, and the table schemas the deployment exposes, searches any semantic surface first, then writes read-only SQL against exact qualified table names, checks truncation before trusting counts, and reports with the query attached.",
-      "category": "query",
-      "keywords": [
-        "skardi",
-        "retrieval",
-        "query",
-        "sql",
-        "hybrid-search",
-        "skardi-cli",
-        "data-agent",
-        "read-only"
-      ]
-    },
-    {
-      "name": "graph-source",
-      "source": "./graph-source",
-      "description": "Connect a property graph (knowledge graph, GraphRAG corpus, Apache AGE / openCypher data) to Skardi and query it through SQL, end to end: provision the AGE backend with a least-privilege role, declare the type: graph source and its views in context YAML, verify registration health (healthy/degraded/refused), write correct queries (cypher_query, graph_schema, the JSON getters), and wire Cypher parameters into pipelines. Encodes the traps: positional column binding, no predicate pushdown into view Cypher, wrong-getter silent NULLs, and the one working {params} pipeline spelling.",
-      "category": "query",
-      "keywords": [
-        "skardi",
-        "graph",
-        "cypher",
-        "age",
-        "opencypher",
-        "knowledge-graph",
-        "graphrag",
-        "postgres",
-        "read-only"
-      ]
-    },
-    {
-      "name": "graph-rag",
-      "source": "./graph-rag",
-      "description": "Answer a question about a knowledge graph or property graph served by a skardi-server — including graphs stored in Postgres via Apache AGE. Two shapes, one skill: when the question already names the entity (what implements UpgradeStep, who calls verify_token, what does this class extend) go straight to the traversal; when it does not (how does our git integration work and who depends on it, what handles auth) find the entity by semantic or full-text search first, then traverse from it. Either way the answer comes from EDGES, and it is reported with the traversal, its bound, and the confidence field the edges carry shown. Reach for this whenever a question is about how code or entities CONNECT — what implements or extends X, who calls or imports it, what depends on it, what breaks if we change it, what is the blast radius, how are A and B related, trace the path between them, what is near this concept — and whenever the user says graph, graph RAG, GraphRAG, knowledge graph, Cypher, AGE, multi-hop, impact, lineage or dependencies. IMPORTANT: reach for it even when the user names no server and no graph, and even when the question looks like something a codebase grep could answer. A graph on a server may hold a different codebase from the working directory, so grepping the local repo can answer a different question and truthfully report a not-found for an entity the graph has hundreds of; check whose graph it is rather than assuming either way. Run `skardi schema` first: the CLI resolves its server from ~/.skardi/config.yaml with no arguments, so one command tells you whether a graph source exists — cheaper than assuming either way. Only hand off if that comes back with no graph source: graph setup is graph-source, index building is auto-context, and row-shaped questions (counts, sums, filters over tables) are retrieval.",
-      "category": "query",
-      "keywords": [
-        "skardi",
-        "graph-rag",
-        "graphrag",
-        "knowledge-graph",
-        "cypher",
-        "age",
-        "multi-hop",
-        "retrieval",
-        "read-only"
-      ]
+      "keywords": ["skardi", "context", "rag", "retrieval", "graph", "hybrid-search", "skardi-server"]
     }
   ]
 }
