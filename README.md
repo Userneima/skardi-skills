@@ -11,6 +11,7 @@ Check out our demo [here](https://www.youtube.com/watch?v=Cx5jG0OtUuk).
 | `skills/auto-context/` | `auto-context` | Turn a folder of documents, a table you already have, or documents still inside a service into governed, searchable context an agent can query. Hybrid search (vector + full-text + RRF) served over HTTP by `skardi-server`. Three raw-material entries, one flow: a folder; an existing table (SQLite read directly and read-only, any other datastore piped in as NDJSON); or fetch-and-land — list, fetch each body, reconcile, ingest — where your agent writes the per-source fetch code and the skill fixes the process and its acceptance criteria. Storage is a separate choice: defaults to a local SQLite file the skill creates and owns (FTS5 + sqlite-vec `vec0` mirrors kept in sync by triggers); point it at Postgres+pgvector, MongoDB, or Lance when the index should live in a database you already own. Handles prereq checks, model resolution, chunking and embedding inline in SQL, ingest, and retrieval end-to-end across `candle` / `gguf` / `remote_embed`. Never creates schema in a datastore you own — prints the SQL and waits — and never writes to a table given as raw material. |
 | `skills/retrieval/` | `retrieval` | Answer questions from live data through a running `skardi-server` with the `skardi` CLI. Discovers sources, named pipelines, and the table schemas the deployment exposes, runs the question through any semantic search surface first (`search-hybrid` and friends), then writes read-only SQL against exact qualified table names, checks truncation before trusting counts, and reports with the query attached. Consumes whatever the server already has — it builds no index, writes no data, and starts no servers. |
 | `skills/graph-source/` | `graph-source` | Connect a property graph (a knowledge graph, a GraphRAG corpus — Apache AGE / openCypher) to Skardi and query it through SQL, end to end: provision AGE with a least-privilege reader role, declare the `type: graph` source and its views in context YAML, triage registration health (healthy / degraded / refused, and what recovery does and does not answer), write correct queries (`cypher_query`, `graph_schema`, the JSON getters), and wire Cypher parameters into pipelines. Encodes the traps that bite in production: positional `columns` binding (same-typed columns declared out of RETURN order swap silently), no predicate pushdown into view Cypher (the bound lives in the view, `RowCapExceeded` otherwise), wrong-getter silently-NULL columns, the deliberately-absent `->`/`->>` operators, lowercase-only view names, and the one working `{params}` pipeline spelling. Read-only by backend enforcement; AGE is a preview backend on Skardi `main` (Neo4j/Kuzu are later milestones). |
+| `skills/graph-rag/` | `graph-rag` | Answer questions whose evidence is in graph relationships: find or verify the named entities, traverse from them through read-only Cypher, and report the bounds and confidence of the edges used. |
 
 > **A running `skardi-server` is required.** Since Skardi's CLI became a thin HTTP client it holds no query engine and no local execution mode, so every path in `auto-context` starts a server, and `retrieval` connects to one that is already running. There is no CLI-only mode.
 
@@ -27,9 +28,9 @@ From inside any Claude Code session:
 /plugin install skardi@skardi-skills
 ```
 
-That's it — all three skills are now available across all your projects, and `/plugin marketplace update skardi-skills` pulls future versions.
+That's it — all four skills are now available across all your projects, and `/plugin marketplace update skardi-skills` pulls future versions.
 
-> **Upgrading from an earlier version:** the three plugins are now one, named `skardi`, so that every host can install this repository with its own one-line plugin command instead of a manual directory copy. Installed copies of the old per-skill plugins are not removed automatically — run `/plugin uninstall auto-context`, `/plugin uninstall retrieval` and `/plugin uninstall graph-source`, then install `skardi`. Further back: `auto-knowledge-base` and `auto-rag` were merged into `auto-context`; `skardi-deploy-and-patterns` and `feishu-connector` were retired, and Feishu cloud docs are now raw material for `auto-context`.
+> **Upgrading from an earlier version:** the individual plugins are now one, named `skardi`, so that every host can install this repository with its own one-line plugin command instead of a manual directory copy. Installed copies of the old per-skill plugins are not removed automatically — run `/plugin uninstall auto-context`, `/plugin uninstall retrieval`, `/plugin uninstall graph-source` and `/plugin uninstall graph-rag`, then install `skardi`. Further back: `auto-knowledge-base` and `auto-rag` were merged into `auto-context`; `skardi-deploy-and-patterns` and `feishu-connector` were retired, and Feishu cloud docs are now raw material for `auto-context`.
 
 ### Claude Code (manual copy)
 
@@ -44,6 +45,9 @@ cp -r skills/retrieval ~/.claude/skills/retrieval
 
 # graph-source (connect a property graph and query it through SQL)
 cp -r skills/graph-source ~/.claude/skills/graph-source
+
+# graph-rag (answer questions whose evidence is in graph relationships)
+cp -r skills/graph-rag ~/.claude/skills/graph-rag
 ```
 
 Claude Code will automatically load the relevant skill when your request matches it — e.g. "index these docs" / "make this folder searchable" / "build a RAG" / "expose hybrid search as HTTP" / "RAG service over our pgvector DB" for `auto-context`, or "query our database" / "how many orders last month" / "what tables do we have" for `retrieval`. You can also invoke them directly:
@@ -123,6 +127,7 @@ mkdir -p ~/.agents/skills
 cp -r skills/auto-context ~/.agents/skills/auto-context
 cp -r skills/retrieval ~/.agents/skills/retrieval
 cp -r skills/graph-source ~/.agents/skills/graph-source
+cp -r skills/graph-rag ~/.agents/skills/graph-rag
 ```
 
 To scope the skill to a single project instead, copy it into that repo's
@@ -142,6 +147,7 @@ through its own CLI rather than by copying:
 openclaw skills install ./skills/auto-context
 openclaw skills install ./skills/retrieval
 openclaw skills install ./skills/graph-source
+openclaw skills install ./skills/graph-rag
 ```
 
 That installs into `~/.openclaw/workspace/skills/`, scoped to the active agent
@@ -158,6 +164,7 @@ mkdir -p ~/.hermes/skills
 cp -r skills/auto-context ~/.hermes/skills/auto-context
 cp -r skills/retrieval ~/.hermes/skills/retrieval
 cp -r skills/graph-source ~/.hermes/skills/graph-source
+cp -r skills/graph-rag ~/.hermes/skills/graph-rag
 ```
 
 Hermes does not scan `~/.agents/skills/` as a personal directory — inside a git
