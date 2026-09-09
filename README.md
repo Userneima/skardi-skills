@@ -8,10 +8,9 @@ Check out our demo [here](https://www.youtube.com/watch?v=Cx5jG0OtUuk).
 
 | Directory | Skill name | What it covers |
 |---|---|---|
-| `auto-context/` | `auto-context` | Turn a folder of documents, a table you already have, or documents still inside a service into governed, searchable context an agent can query. Hybrid search (vector + full-text + RRF) served over HTTP by `skardi-server`. Three raw-material entries, one flow: a folder; an existing table (SQLite read directly and read-only, any other datastore piped in as NDJSON); or fetch-and-land — list, fetch each body, reconcile, ingest — where your agent writes the per-source fetch code and the skill fixes the process and its acceptance criteria. Storage is a separate choice: defaults to a local SQLite file the skill creates and owns (FTS5 + sqlite-vec `vec0` mirrors kept in sync by triggers); point it at Postgres+pgvector, MongoDB, or Lance when the index should live in a database you already own. Handles prereq checks, model resolution, chunking and embedding inline in SQL, ingest, and retrieval end-to-end across `candle` / `gguf` / `remote_embed`. Never creates schema in a datastore you own — prints the SQL and waits — and never writes to a table given as raw material. |
-| `retrieval/` | `retrieval` | Answer questions from live data through a running `skardi-server` with the `skardi` CLI. Discovers sources, named pipelines, and the table schemas the deployment exposes, runs the question through any semantic search surface first (`search-hybrid` and friends), then writes read-only SQL against exact qualified table names, checks truncation before trusting counts, and reports with the query attached. Consumes whatever the server already has — it builds no index, writes no data, and starts no servers. |
-| `graph-source/` | `graph-source` | Connect a property graph (a knowledge graph, a GraphRAG corpus — Apache AGE / openCypher) to Skardi and query it through SQL, end to end: provision AGE with a least-privilege reader role, declare the `type: graph` source and its views in context YAML, triage registration health (healthy / degraded / refused, and what recovery does and does not answer), write correct queries (`cypher_query`, `graph_schema`, the JSON getters), and wire Cypher parameters into pipelines. Encodes the traps that bite in production: positional `columns` binding (same-typed columns declared out of RETURN order swap silently), no predicate pushdown into view Cypher (the bound lives in the view, `RowCapExceeded` otherwise), wrong-getter silently-NULL columns, the deliberately-absent `->`/`->>` operators, lowercase-only view names, and the one working `{params}` pipeline spelling. Read-only by backend enforcement; AGE is the shipped backend (Neo4j/Kuzu are later Skardi milestones). |
-| `graph-rag/` | `graph-rag` | Answer a natural-language question whose answer lives in **relationships**, over a server that has a graph source. A retrieval surface is needed only for *vague* questions — one that names its entity ("what calls `verify_token`?") is seeded by a graph property lookup, so a server with a graph and no search surface still runs this skill's main flow. Seeds the question (semantic search when it is vague, a property lookup when it names the entity), verifies the seeds resolve in the graph, expands from them with `cypher_query`, and reports with both hops and their bounds attached. Encodes the mechanical reason this is **two hops and not one query** — `connection`/`cypher`/`columns` are plan-time literals, so no single statement can join a retrieval result into a traversal, and the agent is what bridges them — plus the rules that follow: seeds travel in `params` (never concatenated into the Cypher, which is untrusted-input injection), and a dense graph demands three bounds at once (small seed set, `LIMIT` inside the Cypher, a named relationship type). Complements `graph-source`, which connects the graph, and `retrieval`, which answers row questions. |
+| `skills/auto-context/` | `auto-context` | Turn a folder of documents, a table you already have, or documents still inside a service into governed, searchable context an agent can query. Hybrid search (vector + full-text + RRF) served over HTTP by `skardi-server`. Three raw-material entries, one flow: a folder; an existing table (SQLite read directly and read-only, any other datastore piped in as NDJSON); or fetch-and-land — list, fetch each body, reconcile, ingest — where your agent writes the per-source fetch code and the skill fixes the process and its acceptance criteria. Storage is a separate choice: defaults to a local SQLite file the skill creates and owns (FTS5 + sqlite-vec `vec0` mirrors kept in sync by triggers); point it at Postgres+pgvector, MongoDB, or Lance when the index should live in a database you already own. Handles prereq checks, model resolution, chunking and embedding inline in SQL, ingest, and retrieval end-to-end across `candle` / `gguf` / `remote_embed`. Never creates schema in a datastore you own — prints the SQL and waits — and never writes to a table given as raw material. |
+| `skills/retrieval/` | `retrieval` | Answer questions from live data through a running `skardi-server` with the `skardi` CLI. Discovers sources, named pipelines, and the table schemas the deployment exposes, runs the question through any semantic search surface first (`search-hybrid` and friends), then writes read-only SQL against exact qualified table names, checks truncation before trusting counts, and reports with the query attached. Consumes whatever the server already has — it builds no index, writes no data, and starts no servers. |
+| `skills/graph-source/` | `graph-source` | Connect a property graph (a knowledge graph, a GraphRAG corpus — Apache AGE / openCypher) to Skardi and query it through SQL, end to end: provision AGE with a least-privilege reader role, declare the `type: graph` source and its views in context YAML, triage registration health (healthy / degraded / refused, and what recovery does and does not answer), write correct queries (`cypher_query`, `graph_schema`, the JSON getters), and wire Cypher parameters into pipelines. Encodes the traps that bite in production: positional `columns` binding (same-typed columns declared out of RETURN order swap silently), no predicate pushdown into view Cypher (the bound lives in the view, `RowCapExceeded` otherwise), wrong-getter silently-NULL columns, the deliberately-absent `->`/`->>` operators, lowercase-only view names, and the one working `{params}` pipeline spelling. Read-only by backend enforcement; AGE is the shipped backend (Neo4j/Kuzu are later Skardi milestones). |
 
 > **A running `skardi-server` is required.** Since Skardi's CLI became a thin HTTP client it holds no query engine and no local execution mode, so every path in `auto-context` starts a server, and `retrieval` connects to one that is already running. There is no CLI-only mode.
 
@@ -23,15 +22,12 @@ From inside any Claude Code session:
 
 ```text
 /plugin marketplace add SkardiLabs/skardi-skills
-/plugin install auto-context@skardi-skills
-/plugin install retrieval@skardi-skills
-/plugin install graph-source@skardi-skills
-/plugin install graph-rag@skardi-skills
+/plugin install skardi@skardi-skills
 ```
 
-That's it — the skills are now available across all your projects, and `/plugin marketplace update skardi-skills` pulls future versions.
+That's it — all three skills are now available across all your projects, and `/plugin marketplace update skardi-skills` pulls future versions.
 
-> **Upgrading from an earlier version:** `auto-knowledge-base` and `auto-rag` have been merged into `auto-context`; `skardi-deploy-and-patterns` and `feishu-connector` have been retired. Feishu cloud docs are now raw material for `auto-context`, and Feishu Bitables and chats are moving to Skardi's own Feishu source pack. Installed copies of retired plugins are not removed automatically — run `/plugin uninstall feishu-connector`.
+> **Upgrading from an earlier version:** the three plugins are now one, named `skardi`, so that every host can install this repository with its own one-line plugin command instead of a manual directory copy. Installed copies of the old per-skill plugins are not removed automatically — run `/plugin uninstall auto-context`, `/plugin uninstall retrieval` and `/plugin uninstall graph-source`, then install `skardi`. Further back: `auto-knowledge-base` and `auto-rag` were merged into `auto-context`; `skardi-deploy-and-patterns` and `feishu-connector` were retired, and Feishu cloud docs are now raw material for `auto-context`.
 
 ### Claude Code (manual copy)
 
@@ -39,13 +35,13 @@ If you'd rather not use the plugin marketplace, copy the skill(s) into your pers
 
 ```bash
 # auto-context (searchable context over a folder or your own datastore)
-cp -r auto-context/skills/auto-context ~/.claude/skills/auto-context
+cp -r skills/auto-context ~/.claude/skills/auto-context
 
 # retrieval (answer questions from data a skardi-server already serves)
-cp -r retrieval/skills/retrieval ~/.claude/skills/retrieval
+cp -r skills/retrieval ~/.claude/skills/retrieval
 
-# graph-rag (answer questions whose answer lives in relationships)
-cp -r graph-rag/skills/graph-rag ~/.claude/skills/graph-rag
+# graph-source (connect a property graph and query it through SQL)
+cp -r skills/graph-source ~/.claude/skills/graph-source
 ```
 
 Claude Code will automatically load the relevant skill when your request matches it — e.g. "index these docs" / "make this folder searchable" / "build a RAG" / "expose hybrid search as HTTP" / "RAG service over our pgvector DB" for `auto-context`, or "query our database" / "how many orders last month" / "what tables do we have" for `retrieval`. You can also invoke them directly:
@@ -57,8 +53,8 @@ Claude Code will automatically load the relevant skill when your request matches
 
 ### Other Agent Skills hosts
 
-Codex, Cursor, Pi, dsh, OpenClaw, and Hermes load `auto-context` and `retrieval`
-too; they differ in where the skill directory has to go. All of them install from a checkout:
+Codex, Cursor, Pi, dsh, OpenClaw, and Hermes load these skills too; they differ
+in where the skill directory has to go. All of them install from a checkout:
 
 ```bash
 git clone https://github.com/SkardiLabs/skardi-skills.git && cd skardi-skills
@@ -77,9 +73,9 @@ every one of them:
 
 ```bash
 mkdir -p ~/.agents/skills
-cp -r auto-context/skills/auto-context ~/.agents/skills/auto-context
-cp -r retrieval/skills/retrieval ~/.agents/skills/retrieval
-cp -r graph-rag/skills/graph-rag ~/.agents/skills/graph-rag
+cp -r skills/auto-context ~/.agents/skills/auto-context
+cp -r skills/retrieval ~/.agents/skills/retrieval
+cp -r skills/graph-source ~/.agents/skills/graph-source
 ```
 
 To scope the skill to a single project instead, copy it into that repo's
@@ -96,9 +92,9 @@ install per tool — `~/.cursor/skills/` for [Cursor](https://cursor.com/docs/sk
 through its own CLI rather than by copying:
 
 ```bash
-openclaw skills install ./auto-context/skills/auto-context
-openclaw skills install ./retrieval/skills/retrieval
-openclaw skills install ./graph-rag/skills/graph-rag
+openclaw skills install ./skills/auto-context
+openclaw skills install ./skills/retrieval
+openclaw skills install ./skills/graph-source
 ```
 
 That installs into `~/.openclaw/workspace/skills/`, scoped to the active agent
@@ -112,9 +108,9 @@ treats `~/.hermes/skills/` as its source of truth:
 
 ```bash
 mkdir -p ~/.hermes/skills
-cp -r auto-context/skills/auto-context ~/.hermes/skills/auto-context
-cp -r retrieval/skills/retrieval ~/.hermes/skills/retrieval
-cp -r graph-rag/skills/graph-rag ~/.hermes/skills/graph-rag
+cp -r skills/auto-context ~/.hermes/skills/auto-context
+cp -r skills/retrieval ~/.hermes/skills/retrieval
+cp -r skills/graph-source ~/.hermes/skills/graph-source
 ```
 
 Hermes does not scan `~/.agents/skills/` as a personal directory — inside a git
@@ -133,7 +129,7 @@ shape outright, and OpenClaw derives its install slug from the same field.
 
 ## Bundled resources per skill
 
-### `auto-context/`
+### `skills/auto-context/`
 
 Executable scripts, per-backend YAML templates, and reference docs the skill invokes:
 
@@ -150,18 +146,6 @@ Executable scripts, per-backend YAML templates, and reference docs the skill inv
 | `references/troubleshooting.md` | Symptom → fix for server and own-datastore failures (missing role, missing extension, dim mismatch, tsquery syntax, Docker host-networking, localhost HTTP-proxy interception) |
 | `references/troubleshooting_sqlite.md` | Symptom → fix for the local path (sqlite-vec loading and extension paths, FTS5 syntax, trigger mismatches, model download) |
 
-### `graph-rag/`
+### `skills/retrieval/`
 
-No scripts — the skill is the procedure, and the two hops are deliberately the agent's to bridge. What ships alongside it:
-
-| Path | Purpose |
-|---|---|
-| `references/patterns.md` | The four recipes, each with its Cypher, its `columns` declaration and its bound written out: seed-and-expand, entity neighbourhood, path-between, and impact / blast radius — plus the mechanical procedure for writing a positional `columns` declaration against your own `RETURN` clause, and how to join the two hops without splicing retrieved text into the Cypher |
-| `references/troubleshooting.md` | Symptom → cause, split into the failures that **announce themselves** and the ones that **return plausible wrong answers** — an all-NULL column (wrong getter), two columns holding each other's values (positional swap), a backwards answer (arrow direction), and an unrepresentative sample (`LIMIT` with no `ORDER BY`) |
-| `evals/evals.json` | Nine cases in three modes. Three **execution** cases (the skill is loaded; what is scored is discovery, bounds, and whether the answer separates supported edges from suggested ones), five **trigger** cases run with no skill preloaded so the selection itself is measured — including one recorded as failing, since a graph of documents rather than code does not select this skill at all — and one **regression** case that runs the large fixture |
-| `evals/fixtures/setup.sh` | The small fixture: an AGE graph of ten functions and eight calls, plus a `skardi-server` on it. Deterministic by construction, and shaped around the three traps an eval has to be able to see — a conflated name with a caller of its own, three of six call edges marked `ambiguous`, and a dependent only reachable at two hops. Asserts its own counts before handing the server over |
-| `evals/fixtures/setup_large.sh` | The large fixture, opt-in: a synthetic 50k-vertex / 250k-edge graph built in about ninety seconds, which is where the bounds start to bite. Asserts seven of them, each paired with its recommended form — the labeled single `MATCH` answers while the unlabeled split form times out, an undirected untyped `-[r]-` times out, a SQL `WHERE` over an unbounded view fails while a SQL `LIMIT` over it succeeds, the truncation notice is on stderr only, and `LIMIT` without `ORDER BY` returns a different slice. A check that flips means the advice in `SKILL.md` needs re-timing |
-
-### `retrieval/`
-
-No scripts — the skill is the procedure: `SKILL.md` is the whole plugin.
+No scripts — the skill is the procedure: `SKILL.md` is the whole skill.

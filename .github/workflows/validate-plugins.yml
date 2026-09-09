@@ -19,23 +19,36 @@ jobs:
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code
 
-      - name: Validate marketplace manifest
+      - name: Validate marketplace and plugin manifests
         run: claude plugin validate .
 
-      - name: Validate every plugin manifest
+      - name: Every skill directory carries a SKILL.md
         shell: bash
         run: |
           set -e
-          # Find every <plugin>/.claude-plugin/plugin.json (excluding the
-          # root marketplace manifest) and validate the plugin directory.
-          mapfile -t manifests < <(find . -path ./.claude-plugin -prune -o -path '*/.claude-plugin/plugin.json' -print)
-          if [ "${#manifests[@]}" -eq 0 ]; then
-            echo "No plugin manifests found — nothing to validate." >&2
+          shopt -s nullglob
+          dirs=(skills/*/)
+          if [ "${#dirs[@]}" -eq 0 ]; then
+            echo "No skill directories found under skills/ — nothing to validate." >&2
             exit 1
           fi
-          for manifest in "${manifests[@]}"; do
-            plugin_dir=$(dirname "$(dirname "$manifest")")
-            echo "::group::$(basename "$plugin_dir")"
-            claude plugin validate "$plugin_dir"
-            echo "::endgroup::"
+          status=0
+          for dir in "${dirs[@]}"; do
+            name=$(basename "$dir")
+            if [ ! -f "${dir}SKILL.md" ]; then
+              echo "::error::${dir} has no SKILL.md"
+              status=1
+              continue
+            fi
+            # Hosts other than Claude Code reject or silently drop any name that
+            # is not kebab-case, and derive install slugs from the same field.
+            if ! printf '%s' "$name" | grep -Eq '^[a-z0-9]+(-[a-z0-9]+)*$'; then
+              echo "::error::skill directory '${name}' is not kebab-case"
+              status=1
+            fi
+            if ! grep -Eq "^name: ${name}\$" "${dir}SKILL.md"; then
+              echo "::error::${dir}SKILL.md frontmatter name does not match its directory '${name}'"
+              status=1
+            fi
           done
+          exit $status
