@@ -45,9 +45,10 @@ directions, each against a real graph:
 | a DataHub code graph | an unrelated repo | **0 / 40** exist |
 | a graph of that repo | that repo | **40 / 40** exist |
 
-A near-total miss rate means the graph is not your project. There is no
-threshold to tune: the two answers are 0% and 100%, because a file path either
-resolves or it does not.
+There is no threshold to tune: the two answers are 0% and 100%, because a file
+path either resolves or it does not. But read the 0% correctly. It means the
+graph's files are not *here*; whether that is a mismatch depends on whether
+"here" is a codebase at all, which is the branch list below.
 
 **Why not read the project name off the paths.** An earlier version of this
 check did — `awk -F/ '{print $1}' | sort | uniq -c` — and it works only when
@@ -73,16 +74,51 @@ The stakes, measured on the same rig: a question like "who calls `main`?"
 asked from an unrelated shell would have been answered with **81** DataHub
 functions, confidently, with no sign anything was wrong.
 
-Do this once per session, before the first answer about local code, then:
+Do this once per session, before the first answer about local code. **The check
+reports; it does not decide.** Four outcomes, and only one of them is a reason
+to leave the graph alone:
 
-- **The graph is the user's project.** Proceed, and name the project in the
-  answer so the scope is visible.
-- **The graph is a different project.** Say which, and answer the local
-  question with the ordinary local-code tools instead. A graph is not
-  authority over a repo it does not contain.
-- **The user's question was explicitly about the graph** ("what does the
-  graph say about…", a named server) — then the graph is the subject and the
-  working directory is irrelevant. Skip ahead.
+- **The paths resolve where you are standing.** The graph is this project.
+  Proceed, and name the project in the answer so the scope is visible.
+- **The paths do not resolve, and there IS a local project they should have
+  matched** — you are in a repository, it has source files, and none of the
+  graph's paths are among them. This is the case the check exists for. Say
+  which project the graph appears to hold, and answer the local question with
+  the ordinary local-code tools. A graph is not authority over a repo it does
+  not contain.
+- **The paths do not resolve, and there is no local checkout to compare
+  against** — an empty directory, a docs folder, a workspace that is not the
+  code. Then nothing is in conflict: you were handed a graph, which is the
+  ordinary case for a knowledge graph or a corpus that was never a repository.
+  **Proceed.** Report the sample you took so the scope is visible, and let the
+  user tell you if it is the wrong graph. Refusing here rejects the only path
+  that can answer the question.
+- **The question was explicitly about the graph** ("what does the graph say
+  about…", a named server, a graph that is not code at all) — the graph is the
+  subject and the working directory is irrelevant. Skip ahead.
+
+The distinction between the second and third outcomes is whether a local
+project exists to be wrong about, so establish that before concluding anything:
+
+```bash
+# Is there local code here at all? Cheap, and it decides which branch above you
+# are in. Count what is on disk, not what git knows: a checkout is not the only
+# way source files arrive, and a vendored or exported tree with no .git is still
+# a codebase you could answer from.
+find . -maxdepth 3 \( -name node_modules -o -name .git -o -name target -o -name dist \) -prune \
+  -o -type f \( -name '*.py' -o -name '*.ts' -o -name '*.tsx' -o -name '*.js' \
+  -o -name '*.go' -o -name '*.rs' -o -name '*.java' -o -name '*.rb' \) -print \
+  2>/dev/null | head -50 | wc -l
+```
+
+Zero means the miss rate says nothing about whose graph it is, so proceed. A
+nonzero count next to a total miss is the mismatch worth reporting. Add the
+extensions your ecosystem uses; the list above is a starting point, not a
+contract.
+
+The bundled eval fixture is the zero case, deliberately: its `File` nodes are
+`auth/tokens.py` and friends, nothing resolves next to `setup.sh`, and the
+correct behaviour there is to answer from the graph.
 
 (Client-side `awk` rather than Cypher's `split()`: `split` needs a quoted
 delimiter, and a nested quote inside the single-quoted SQL literal runs into
@@ -178,6 +214,13 @@ view.
 **Seeds go in `params`, never concatenated into the Cypher — and the params
 literal itself must be SQL-escaped.** These are TWO layers, and getting the
 first right does not give you the second.
+
+**This covers every string value, not just the seeds.** A filter you typed
+yourself is subject to the same rule: writing `<> 'ambiguous'` inside the
+Cypher closes the single-quoted SQL literal that carries it, and the statement
+fails to parse before the graph ever sees it. Send it as a parameter
+(`<> $ambiguous`, with `"ambiguous": "ambiguous"` in the params object) the
+way the recipes in `references/patterns.md` do.
 
 Cypher params stop Cypher injection: the Cypher is a plan-time literal
 screened by a keyword guard, and values spliced into it are an injection
@@ -407,6 +450,15 @@ view from SQL still materializes the view's whole result first, so an
 unbounded view fails `RowCapExceeded` even for a query that wants one row.
 The bound belongs **inside** the Cypher.
 
+A SQL `LIMIT` behaves differently, and the difference is worth knowing before
+you conclude a view is unusable: `LIMIT` *does* push, so `SELECT * FROM
+kg.main.some_view LIMIT 5` returns five rows from the same view whose `WHERE`
+read fails. Measured on a 50k-vertex graph, all three ways: no clause returns
+the ad-hoc cap with a truncation notice, `LIMIT 5` returns five rows, and a
+`WHERE` fails on `max_rows`. Declare the bound in the Cypher anyway; relying on
+the caller to always pass a `LIMIT` is the same unbounded view with a longer
+fuse.
+
 **Look at what the EDGES carry before you trust an expansion.** This is the
 trap that produced the worst answer in this skill's own testing, and it is
 invisible from the vocabulary: a relationship type tells you nothing about
@@ -458,6 +510,12 @@ the pattern across two `MATCH` clauses makes that scan the left side of a
 join. Both have to be right: labeling a two-clause form did not rescue it, and
 inlining an unlabeled one did not either. Write the seed label and the
 traversal as one pattern with the `WHERE` after it.
+
+This rule and the undirected-untyped one below are the two the small eval
+fixture cannot test, so they have a regression test of their own:
+`evals/fixtures/setup_large.sh` builds a synthetic 50k-vertex graph where the
+recommended form answers and both of these time out. If you weaken either
+rule, run that and check it still flips.
 
 **Bound the expansion, and measure rather than trust.** Ask the edge counts
 first (the `graph_schema` section above) — a relationship with hundreds of
@@ -520,14 +578,25 @@ question the user can answer and you cannot.
 
 ## When stuck
 
-| Symptom | Meaning | Do |
+Two of these are things you can read. The rest arrive as the same
+`query_execution_error` (HTTP 500), so the symptom column is what you
+*observe*, not what the error says.
+
+| What you see | Meaning | Do |
 |---|---|---|
 | exit code 2 | server unreachable | Report the URL you tried. Do not retry in a loop; do not start a server. Then **answer the question with the ordinary local-code tools** unless the user asked for graph data specifically — the same handling as a graph that turns out to be a different project. An unreachable graph is a reason this skill cannot help, not a reason the question goes unanswered. |
-| `RowCapExceeded` | the Cypher itself is unbounded | Put the bound inside the Cypher, not in SQL. Narrow the relationship type. |
-| a column is all NULL | wrong getter for the stored JSON type | Check the property's actual type, pick the matching getter. |
-| the expansion returns 0 rows | seeds do not resolve in the graph, or the arrow points the wrong way | Re-run the seed-resolution check; then try the opposite direction. |
-| `cypher_query` errors on arity | `columns` count ≠ `RETURN` count | AGE requires declared arity; count them against each other. |
+| `sql_validation_error` (HTTP 400) | a write, multiple statements, or an unescaped `'` in the params or Cypher literal | This one names its own cause. Send string values as parameters; double every `'` in the serialized params. |
+| `query_execution_error` (HTTP 500) | could be nine different things, and the text says none of them | **Bisect.** Strip to `graph_schema('kg')`, then the simplest one-column traversal, then add back the label, the relationship, the `WHERE`, the params, and each `RETURN` column one at a time. The first call that fails names the cause. Procedure and the shortlist of usual culprits: `references/troubleshooting.md`. |
+| a column is all NULL, query succeeded | wrong getter for the stored JSON type | Ask for `properties(n)` as `json`, read the real types off it, then pick the matching getter. |
+| the expansion returns 0 rows | seeds do not resolve, or the arrow points the wrong way | Re-run the seed-resolution check; then try the opposite direction. Not an error. |
 | the same question failed 3 times | you are guessing | Stop. Show what you tried, what came back, and your best hypothesis of what is missing. |
 
+Do not read the 500's text as a diagnosis, and do not conclude from it that a
+label or connection name is wrong. `RowCapExceeded`, an arity mismatch, a
+params argument that is not an object, a declared type that does not match the
+data, and three Cypher constructs this AGE build does not support all produce
+exactly that string. Bisecting separates them; re-reading the message does not.
+
 An honest "here is where it stopped" beats a fourth guess. Read
-`references/troubleshooting.md` for the fuller symptom table.
+`references/troubleshooting.md` for the full procedure and the log lines to ask
+an operator for.
