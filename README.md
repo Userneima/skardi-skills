@@ -57,13 +57,6 @@ These hosts install this repository directly through their own plugin or
 extension mechanism. Each reads its own manifest in this repo and picks all
 three skills up from `skills/`.
 
-**[Devin CLI](https://docs.devin.ai/cli/extensibility/plugins/overview)** —
-reads `.devin-plugin/plugin.json` and auto-discovers `skills/`:
-
-```bash
-devin plugins install SkardiLabs/skardi-skills
-```
-
 **[Gemini CLI](https://github.com/google-gemini/gemini-cli/blob/main/docs/extensions/reference.md)** —
 reads `gemini-extension.json`; a skill is discovered by its location, so
 `skills/retrieval/SKILL.md` becomes the `retrieval` skill:
@@ -87,10 +80,10 @@ reads the `pi.skills` field in `package.json`:
 pi install git:github.com/SkardiLabs/skardi-skills
 ```
 
-> **How far these four have been checked.** Each manifest follows the host's own
-> published plugin spec, linked above, and is valid against it. None of the four
-> has been installed and launched by us, so they are documented paths rather
-> than measured ones — only the Claude Code path above has been run end to end.
+> **How far these three have been checked.** Each manifest follows the host's own
+> published plugin spec, linked above, and is valid against it. None of the three
+> has been installed and launched by us yet, so they are documented paths rather
+> than measured ones; only the Claude Code path above has been run end to end.
 > If a host rejects or silently ignores the plugin, please open an issue saying
 > which host and version.
 
@@ -98,7 +91,8 @@ Codex, Cursor and Grok are not in this list because they distribute through
 their own reviewed marketplaces rather than from a repository manifest, and
 Hermes is not because a Hermes *plugin* has to register each skill from Python
 in `__init__.py` (`skills/` is not auto-registered there) and would namespace
-them as `skardi:auto-context`. For all four, use the checkout path below.
+them as `skardi:auto-context`. For all three, and for any host below, use the
+checkout path.
 
 ### Other Agent Skills hosts, from a checkout
 
