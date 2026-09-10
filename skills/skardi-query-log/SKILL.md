@@ -98,10 +98,19 @@ When a query is worth turning into a pipeline, **don't just suggest it — build
 python3 scripts/add_pipeline.py --dry-run \
   --name open-prs-by-age --description "Open PRs, oldest first" \
   --dir <pipeline directory> --port <server port> --restart-cmd "<restart command>" \
-  --sql "SELECT ... LIMIT {limit}"
+  --sql "SELECT ... WHERE status = {status} LIMIT {limit}"
 ```
 
 Drop `--dry-run` to install for real. It writes the file, restarts, and probes health; **if the server does not come back it deletes the file, restarts again, and leaves the server as it found it.**
+
+> **A placeholder stands bare, including for strings.** `{name}` is bound as a
+> parameter, not pasted into the SQL text, so `WHERE status = {status}` is right
+> and `WHERE status = '{status}'` is wrong. The quoted form is worth naming
+> because it is the one mistake that passes every check: the server starts, the
+> pipeline registers, its parameter is even validated as required, and the
+> failure only appears on the first real call, as a parser error. `add_pipeline.py`
+> now refuses it up front. Bare binding is also the safe form: values containing
+> spaces or an apostrophe go through as values, not as SQL.
 
 > **`--dir`, `--port` and `--restart-cmd` are all required and none of them is guessed.** The port especially must not have a default: if some other server happens to hold that port, the health probe passes, the script reports success, and the real server is dead. These three values have to match how the server was actually started — if you are unsure, read the launch command or ask the user.
 

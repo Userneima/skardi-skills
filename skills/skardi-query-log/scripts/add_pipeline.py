@@ -9,7 +9,7 @@ Why self-verification is mandatory: one pipeline that fails to plan makes the wh
 fail to start and exit; every other pipeline loading fine does not save it (measured 2026-08-04).
 So "write the file and walk away" is not acceptable.
 """
-import argparse, json, os, shutil, subprocess, sys, time, urllib.request
+import argparse, json, os, re, shutil, subprocess, sys, time, urllib.request
 from datetime import datetime, timezone
 
 
@@ -60,6 +60,22 @@ def main():
     if not sql:
         sys.exit("The SQL is empty")
 
+    # A quoted placeholder is the one mistake that survives every check below:
+    # the server starts, the pipeline registers, and its parameter is even
+    # validated, so /health says yes and only the first real call fails with a
+    # parser error. `{name}` becomes a bound parameter, so quoting it is never
+    # right, including for strings.
+    quoted = re.findall(r"""(['"])\{([A-Za-z_][A-Za-z0-9_]*)\}\1""", sql)
+    if quoted:
+        names = ", ".join(f"{{{n}}}" for _, n in quoted)
+        sys.exit(
+            f"Remove the quotes around {names}.\n"
+            "A placeholder is bound as a parameter, not pasted into the SQL text, so it must "
+            "stand bare even when the value is a string: write `WHERE status = {status}`, not "
+            "`WHERE status = '{status}'`. Quoted, this pipeline would install and report "
+            "success, and then fail on every call with a parser error."
+        )
+
     now = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "+00:00")
     body = (
         "kind: pipeline\n\n"
@@ -90,7 +106,10 @@ def main():
 
     print("restarting the server and verifying...")
     if restart(a.restart_cmd, a.port):
-        print(f"[ok] server is up. This query is now also callable as POST /{a.name}/execute, with the placeholders from the SQL as parameters.")
+        print(f"[ok] the server came back and {a.name} is registered at POST /{a.name}/execute, "
+              "taking the SQL's placeholders as parameters.\n"
+              "     That is all this proves. Call it once with real parameters before telling "
+              "anyone it works: a pipeline can register and still fail on execution.")
         return
 
     # It did not come back -- roll the pipeline out and restore the server to how it was

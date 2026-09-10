@@ -68,7 +68,7 @@ def overview(con, kind):
         return
     label = "rows" if kind == "all" else f"{kind} rows"
     print(f"{r['n']} {label} | {r['ok']} succeeded, {r['bad']} failed | {r['sess'] or 0} sessions")
-    print(f"spanning {r['lo'][:16]} -> {r['hi'][:16]}")
+    print(f"spanning {r['lo'][:16]}Z -> {r['hi'][:16]}Z  (UTC, as stored)")
 
     # What the hardened pipelines are actually doing is the other half of the
     # loop this skill runs: a pipeline nobody calls was the wrong pipeline.
@@ -114,7 +114,10 @@ def rows(con, limit, session, failed_only, full, kind):
                 ctx = c.get("purpose") or ""
             except Exception:
                 ctx = r["ai_context"][:40]
-        head = f"[{r['created_at'][11:16]}] {r['status']:9} rows={r['row_count'] if r['row_count'] is not None else '-':>4}"
+        # The ledger stores UTC (`+00:00`). Label it: this skill's judgement is
+        # "how often, over what period", and an unlabelled clock reads as local,
+        # which moves anything near midnight onto the adjacent day.
+        head = f"[{r['created_at'][11:16]}Z] {r['status']:9} rows={r['row_count'] if r['row_count'] is not None else '-':>4}"
         if r["session_id"]:
             head += f"  {r['session_id']}"
         print(head)
