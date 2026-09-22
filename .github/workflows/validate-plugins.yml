@@ -60,3 +60,9 @@ jobs:
             fi
           done
           exit $status
+
+      # A skill needs no registration — every host reads ./skills — so a
+      # half-added one is silent: it installs and works while the README still
+      # counts one short. This is the only check that notices.
+      - name: Every skill in skills/ is listed in the README
+        run: scripts/check-skill-inventory.sh
