@@ -174,6 +174,12 @@ Measured on 2026-09-22 against one local ledger: 105 rows across 30 sessions, wr
 - **`add_pipeline.py` refuses a quoted placeholder before writing anything** (`WHERE s = '{s}'` exits non-zero naming the fix), and on a dry run prints the YAML it would write.
 - All five scripts byte-compile; every one is stdlib-only Python 3.
 
+Measured on 2026-09-23 against a throwaway server: `skardi-server` built from `main` at `5c28961`, on its own port, with a SQLite source, `--query-audit-db` on a fresh file and a restart script passed as `--restart-cmd`. Three ad-hoc queries asked the same question with different dates, plus one that failed.
+
+- **`read_log.py --overview` read the fresh ledger back correctly**: `4 query rows | 3 succeeded, 1 failed | 3 sessions`.
+- **`add_pipeline.py` installed a real pipeline.** The date became a `{since}` placeholder; the script wrote the YAML, restarted the server and saw `/health` come back. `POST /churn-by-plan/execute` with `{"since": "2026-09-01"}` then returned the same rows as the ad-hoc query, and the ledger recorded that call with `statement_kind = pipeline`.
+- **A broken pipeline rolled itself back.** One that selects from a table not in the context stopped the server from starting. The script reported the failure, deleted the YAML, restarted, and the server came back healthy with the earlier pipeline still answering calls. Exit status was non-zero.
+
 **Not verified**: a second person or a second machine (one person, one Apple-silicon Mac); Linux, Intel macOS and Windows (stdlib-only, no platform-specific calls, but expecting is not running); Postgres as the ledger backend (`SKARDI_QUERY_AUDIT_PG_DSN` exists on `main` as an alternative to the SQLite file, and `read_log.py` only opens SQLite).
 
 ## While you are judging
