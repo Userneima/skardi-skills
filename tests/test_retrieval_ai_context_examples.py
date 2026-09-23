@@ -7,6 +7,7 @@ cannot send.
 
 Run: python3 tests/test_retrieval_ai_context_examples.py
 """
+import re
 from pathlib import Path
 
 
@@ -37,27 +38,84 @@ def test_v050_reporting_example_does_not_claim_audit_flags():
 
 
 
-def test_task_is_probed_separately_from_the_pair():
-    """A main build can carry --purpose without --task; probing one must not stand in for the other."""
-    content = text()
-    prereq = content[content.index("## Prerequisites"):content.index("## Rule zero")]
-    assert "grep -q -- '--task'" in prereq, "probe --task on its own line"
+
+def bash_blocks(content):
+    """Fenced ```bash blocks, in document order."""
+    return re.findall(r"```bash\n(.*?)```", content, re.S)
 
 
-def test_every_task_example_travels_with_the_pair():
-    """The CLI refuses --task without --purpose, so no copy-paste example may send one alone."""
+def query_commands(block, commented):
+    """`skardi query` commands in one block, backslash continuations joined.
+
+    commented=False returns runnable lines; commented=True returns the
+    alternative forms written as `# skardi query ...` comment lines.
+    """
+    lines = [ln.strip() for ln in block.splitlines()]
+    if commented:
+        lines = [ln[1:].strip() for ln in lines if ln.startswith("#")]
+    else:
+        lines = [ln for ln in lines if not ln.startswith("#")]
+    joined = "\n".join(lines).replace("\\\n", " ")
+    return [c for c in joined.splitlines() if c.startswith("skardi query ")]
+
+
+def audited(cmd):
+    return "--purpose" in cmd
+
+
+def test_task_probe_runs_before_the_first_audited_query():
+    """The --task probe is a real command, separate from the pair probe, run before any audited query."""
     content = text()
-    blocks = content.split("```")[1::2]
-    # Join backslash continuations so each shell command is one string.
-    commands = [
-        cmd
-        for block in blocks
-        for cmd in block.replace("\\\n", " ").splitlines()
-        if cmd.lstrip().startswith("skardi query") and "--task " in cmd
-    ]
-    assert commands, "at least one runnable --task example"
-    for cmd in commands:
-        assert "--purpose" in cmd and "--session-id" in cmd, cmd
+    blocks = bash_blocks(content)
+    probe = next(
+        (i for i, b in enumerate(blocks)
+         if any(ln.strip().startswith("skardi query --help | grep -q -- '--task'")
+                for ln in b.splitlines())),
+        None,
+    )
+    assert probe is not None, "no executable --task probe line in a bash block"
+    assert "'--purpose'" not in next(
+        ln for ln in blocks[probe].splitlines() if "'--task'" in ln
+    ), "probe --task on its own line, not folded into the pair probe"
+    first_audited = next(
+        i for i, b in enumerate(blocks) if any(audited(c) for c in query_commands(b, False))
+    )
+    assert probe < first_audited, "the --task probe must come before the first audited query"
+
+
+def test_runnable_audited_queries_carry_the_same_task():
+    """On a build that takes --task, every copy-paste query sends the pair and one identical task."""
+    content = text()
+    runnable = [c for b in bash_blocks(content) for c in query_commands(b, False) if audited(c)]
+    assert runnable, "no runnable audited query found"
+    tasks = set()
+    for cmd in runnable:
+        assert "--session-id" in cmd, cmd
+        m = re.search(r'--task "([^"]+)"', cmd)
+        assert m, f"audited query without --task: {cmd}"
+        tasks.add(m.group(1))
+    assert len(tasks) == 1, f"examples reword the task: {sorted(tasks)}"
+
+
+def test_no_query_sends_task_without_the_pair():
+    """The CLI refuses --task alone, in runnable and commented forms alike."""
+    content = text()
+    for block in bash_blocks(content):
+        for cmd in query_commands(block, False) + query_commands(block, True):
+            if "--task " in cmd:
+                assert "--purpose" in cmd and "--session-id" in cmd, cmd
+
+
+def test_every_audited_template_has_both_fallback_forms():
+    """Each template shows a no---task form (pair only) and a v0.5.0 form (no flags)."""
+    content = text()
+    for block in bash_blocks(content):
+        if not any(audited(c) for c in query_commands(block, False)):
+            continue
+        alts = query_commands(block, True)
+        assert any(audited(c) and "--task" not in c for c in alts), block
+        assert any(not audited(c) and "--session-id" not in c and "--task" not in c
+                   for c in alts), block
 
 if __name__ == "__main__":
     failures = 0
