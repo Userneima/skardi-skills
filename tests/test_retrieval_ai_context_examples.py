@@ -36,6 +36,29 @@ def test_v050_reporting_example_does_not_claim_audit_flags():
     assert "/* purpose: paid order count and revenue */" in report
 
 
+
+def test_task_is_probed_separately_from_the_pair():
+    """A main build can carry --purpose without --task; probing one must not stand in for the other."""
+    content = text()
+    prereq = content[content.index("## Prerequisites"):content.index("## Rule zero")]
+    assert "grep -q -- '--task'" in prereq, "probe --task on its own line"
+
+
+def test_every_task_example_travels_with_the_pair():
+    """The CLI refuses --task without --purpose, so no copy-paste example may send one alone."""
+    content = text()
+    blocks = content.split("```")[1::2]
+    # Join backslash continuations so each shell command is one string.
+    commands = [
+        cmd
+        for block in blocks
+        for cmd in block.replace("\\\n", " ").splitlines()
+        if cmd.lstrip().startswith("skardi query") and "--task " in cmd
+    ]
+    assert commands, "at least one runnable --task example"
+    for cmd in commands:
+        assert "--purpose" in cmd and "--session-id" in cmd, cmd
+
 if __name__ == "__main__":
     failures = 0
     for name, fn in sorted(globals().items()):
