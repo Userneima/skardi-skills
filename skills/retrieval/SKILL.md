@@ -236,7 +236,8 @@ Lead with the answer, then attach the evidence so the result can be re-run and a
 410 orders are paid, totalling ¥507,467.60.
 
 — from shop.main.orders via skardi query
-  main build: --purpose "paid order count and revenue" --session-id 3fa4… --task "Q3 retention review" (drop --task on a build without it)
+  build with --task: --purpose "paid order count and revenue" --session-id 3fa4… --task "Q3 retention review"
+  build with the pair only: --purpose "paid order count and revenue" --session-id 3fa4…
   v0.5.0 build: /* purpose: paid order count and revenue */ (readability only; no ledger intent)
   SELECT COUNT(*) AS n, SUM(amount_cents)/100.0 AS total_yuan
   FROM shop.main.orders WHERE status = 'paid'

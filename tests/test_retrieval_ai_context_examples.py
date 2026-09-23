@@ -8,6 +8,7 @@ cannot send.
 Run: python3 tests/test_retrieval_ai_context_examples.py
 """
 import re
+import shlex
 from pathlib import Path
 
 
@@ -45,22 +46,65 @@ def bash_blocks(content):
 
 
 def query_commands(block, commented):
-    """`skardi query` commands in one block, backslash continuations joined.
+    """`skardi query` commands in one block, tokenized the way bash would.
 
-    commented=False returns runnable lines; commented=True returns the
-    alternative forms written as `# skardi query ...` comment lines.
+    commented=False reads the runnable lines; commented=True reads the
+    alternative forms written as `# skardi query ...` comment lines. A line
+    continues only when it ends in a bare backslash, as in bash, and
+    shlex drops trailing `# ...` comments, so a flag that sits in a comment
+    is not counted as sent. A line that starts with a flag means a
+    continuation broke, and fails loudly.
     """
-    lines = [ln.strip() for ln in block.splitlines()]
-    if commented:
-        lines = [ln[1:].strip() for ln in lines if ln.startswith("#")]
-    else:
-        lines = [ln for ln in lines if not ln.startswith("#")]
-    joined = "\n".join(lines).replace("\\\n", " ")
-    return [c for c in joined.splitlines() if c.startswith("skardi query ")]
+    lines = []
+    for raw in block.splitlines():
+        stripped = raw.strip()
+        is_comment = stripped.startswith("#")
+        if is_comment != commented:
+            continue
+        lines.append(stripped[1:].strip() if commented else raw.rstrip("\n"))
+    commands, current = [], ""
+    for line in lines:
+        current += line
+        if line.endswith("\\"):
+            current = current[:-1] + " "
+            continue
+        tokens = shlex.split(current, comments=True)
+        current = ""
+        # The command ends at the first control operator (`|`, `&&`, ...).
+        ops = [i for i, t in enumerate(tokens) if t in {"|", "||", "&&", ";", "&"}]
+        tokens = tokens[: ops[0]] if ops else tokens
+        if tokens[:2] == ["skardi", "query"]:
+            commands.append(tokens)
+        elif tokens and tokens[0].startswith("-"):
+            raise AssertionError(f"orphaned flag line, a continuation broke: {line}")
+    return commands
 
 
-def audited(cmd):
-    return "--purpose" in cmd
+def flags(tokens):
+    """{flag: value} for a tokenized command; accepts `--f v` and `--f=v`."""
+    out = {}
+    i = 2
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok.startswith("-"):
+            if "=" in tok:
+                name, value = tok.split("=", 1)
+            elif i + 1 < len(tokens) and not tokens[i + 1].startswith("-"):
+                name, value = tok, tokens[i + 1]
+                i += 1
+            else:
+                name, value = tok, None
+            out[name] = value
+        i += 1
+    return out
+
+
+def sql_of(f):
+    return f.get("-e") or f.get("--sql")
+
+
+def audited(tokens):
+    return "--purpose" in flags(tokens)
 
 
 def test_task_probe_runs_before_the_first_audited_query():
@@ -84,16 +128,16 @@ def test_task_probe_runs_before_the_first_audited_query():
 
 
 def test_runnable_audited_queries_carry_the_same_task():
-    """On a build that takes --task, every copy-paste query sends the pair and one identical task."""
+    """On a build that takes --task, every copy-paste query sends the pair, one identical task, and its SQL."""
     content = text()
-    runnable = [c for b in bash_blocks(content) for c in query_commands(b, False) if audited(c)]
+    runnable = [flags(c) for b in bash_blocks(content) for c in query_commands(b, False) if audited(c)]
     assert runnable, "no runnable audited query found"
     tasks = set()
-    for cmd in runnable:
-        assert "--session-id" in cmd, cmd
-        m = re.search(r'--task "([^"]+)"', cmd)
-        assert m, f"audited query without --task: {cmd}"
-        tasks.add(m.group(1))
+    for f in runnable:
+        assert f.get("--session-id"), f
+        assert sql_of(f), f"audited query lost its SQL: {f}"
+        assert f.get("--task"), f"audited query without --task: {f}"
+        tasks.add(f["--task"])
     assert len(tasks) == 1, f"examples reword the task: {sorted(tasks)}"
 
 
@@ -102,20 +146,26 @@ def test_no_query_sends_task_without_the_pair():
     content = text()
     for block in bash_blocks(content):
         for cmd in query_commands(block, False) + query_commands(block, True):
-            if "--task " in cmd:
-                assert "--purpose" in cmd and "--session-id" in cmd, cmd
+            f = flags(cmd)
+            if "--task" in f:
+                assert "--purpose" in f and "--session-id" in f, cmd
 
 
-def test_every_audited_template_has_both_fallback_forms():
-    """Each template shows a no---task form (pair only) and a v0.5.0 form (no flags)."""
+def test_every_audited_query_has_both_fallback_forms():
+    """Each runnable audited query has, for the same SQL, a pair-only form and a v0.5.0 form."""
     content = text()
     for block in bash_blocks(content):
-        if not any(audited(c) for c in query_commands(block, False)):
-            continue
-        alts = query_commands(block, True)
-        assert any(audited(c) and "--task" not in c for c in alts), block
-        assert any(not audited(c) and "--session-id" not in c and "--task" not in c
-                   for c in alts), block
+        alts = [flags(c) for c in query_commands(block, True)]
+        for cmd in query_commands(block, False):
+            if not audited(cmd):
+                continue
+            sql = sql_of(flags(cmd))
+            same = [a for a in alts if sql_of(a) == sql]
+            assert any("--purpose" in a and "--session-id" in a and "--task" not in a
+                       for a in same), f"no pair-only form for: {sql}"
+            assert any(not ({"--purpose", "--session-id", "--task"} & a.keys())
+                       for a in same), f"no v0.5.0 form for: {sql}"
+
 
 if __name__ == "__main__":
     failures = 0
