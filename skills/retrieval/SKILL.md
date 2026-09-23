@@ -44,13 +44,15 @@ This skill is written and tested against **v0.5.0** of both CLI and server (the 
 > pair. Each command template below shows, on commented lines, its form for a
 > build without `--task` and its v0.5.0 form.
 
-> **`--task` is newer than the pair.** It arrives with
-> [skardi#255](https://github.com/SkardiLabs/skardi/pull/255), so a build can
-> carry `--purpose` and `--session-id` without it. Verified against that PR's
-> head, commit
-> [`1bbdb18`](https://github.com/SkardiLabs/skardi/commit/1bbdb180a952b7171b8ace6b66b2f25d51550a29):
-> `skardi query --help` there lists `--task`, and a query sent with it lands in
-> the server's audit ledger as `ai_context.task`. Probe for it the same way,
+> **`--task` is newer than the pair.** It landed on `main` with
+> [skardi#255](https://github.com/SkardiLabs/skardi/pull/255) (squash commit
+> [`b827286`](https://github.com/SkardiLabs/skardi/commit/b827286)) and is in
+> no release, so a `main` build from before that commit carries `--purpose` and
+> `--session-id` without it. Verified against the PR's head, commit
+> [`1bbdb18`](https://github.com/SkardiLabs/skardi/commit/1bbdb180a952b7171b8ace6b66b2f25d51550a29),
+> whose change is what `b827286` squashed: `skardi query --help` there lists
+> `--task`, and a query sent with it lands in the server's audit ledger as
+> `ai_context.task`. Probe for it the same way,
 > separately: `skardi query --help` lists `--task` exactly when the build has it.
 > Where it is missing, drop `--task` and send the pair alone; nothing else changes.
 
