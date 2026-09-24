@@ -180,6 +180,13 @@ Measured on 2026-09-23 against a throwaway server: `skardi-server` built from `m
 - **`add_pipeline.py` installed a real pipeline.** The date became a `{since}` placeholder; the script wrote the YAML, restarted the server and saw `/health` come back. `POST /churn-by-plan/execute` with `{"since": "2026-09-01"}` then returned the same rows as the ad-hoc query, and the ledger recorded that call with `statement_kind = pipeline`.
 - **A broken pipeline rolled itself back.** One that selects from a table not in the context stopped the server from starting. The script reported the failure, deleted the YAML, restarted, and the server came back healthy with the earlier pipeline still answering calls. Exit status was non-zero.
 
+Measured on 2026-09-24 as a user would meet it: `skardi-server` built with the recipe below at `1f2ecae`, both skills loaded as the plugin from this branch, a small SQLite source, and a fresh `claude -p` session per question with no memory of the others.
+
+- **Without the `retrieval` step 0, this skill was never used for an ordinary question.** Three sessions asked the same question with different dates; every one picked `retrieval`, rediscovered the schema and wrote the SQL again. Asked outright ("what do I keep querying, should we make a pipeline"), the agent took this skill and installed a working pipeline on its own. The next ordinary question still wrote ad-hoc SQL instead of calling it.
+- **With `retrieval` step 0, reuse happens.** The first session filed its question through `ask.py`; the second and third found it, reused the SQL with the new date, and skipped schema discovery. Answers matched the ad-hoc query every time.
+- **On this source, reuse cost more than rediscovery.** Two tables, a schema that `skardi schema` prints in one call: loading this skill and its config took longer than finding the table again (per session about 45 to 55 seconds against 31 to 38 without it). The saving this skill is for should show on larger schemas and harder questions; that was not measured.
+- **Each rewording files a new question.** "since September 1st" and "since August 15" became two index rows instead of one, so the "times used" count undercounts a question asked in different words.
+
 **Not verified**: a second person or a second machine (one person, one Apple-silicon Mac); Linux, Intel macOS and Windows (stdlib-only, no platform-specific calls, but expecting is not running); Postgres as the ledger backend (`SKARDI_QUERY_AUDIT_PG_DSN` exists on `main` as an alternative to the SQLite file, and `read_log.py` only opens SQLite).
 
 ## While you are judging

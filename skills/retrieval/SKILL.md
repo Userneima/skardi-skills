@@ -5,7 +5,7 @@ description: 'Answer questions from live data through a running skardi-server us
 
 # retrieval — answer questions from live data through skardi
 
-Your job: take a concrete question, find the data behind a running skardi-server that answers it, and come back with the answer plus the query that produced it. The loop is always the same: **discover → search meaning first → SQL for precision → check what came back → report**.
+Your job: take a concrete question, find the data behind a running skardi-server that answers it, and come back with the answer plus the query that produced it. The loop is always the same: **check whether it was asked before → discover → search meaning first → SQL for precision → check what came back → report**. The first step applies whenever `skardi-query-log` is in your skill list; step 0 below.
 
 The `skardi` CLI is a thin HTTP client — every command below is one request to the server, which holds the query engine, the source registrations, and the safety policy. You never need database drivers, connection strings, or credentials for the backing stores; if the server is reachable, you can work.
 
@@ -52,6 +52,10 @@ if skardi query --help | grep -q -- '--purpose'; then
 fi
 ```
 
+Then, if `skardi-query-log` is in your skill list, invoke that skill now and
+run its `ask.py` with the user's question (step 0), before `skardi schema` or
+any other discovery: the answer may already be in its index.
+
 ## Rule zero: ask the server, not your memory
 
 Which tables exist, which pipelines are registered, what a column means, what is writable — these are **deployment facts**. They differ per server and change under you. Re-discover them at the start of every session; never carry them over from a previous conversation or from this file.
@@ -86,6 +90,35 @@ Two consequences worth stating, because instructions further down lean on them:
 
 
 ## The retrieval flow
+
+### 0. Has this been asked before?
+
+**If `skardi-query-log` is in your skill list, invoke it before anything else in this flow.**
+Its `ask.py` keeps an index of questions already answered and the SQL that
+worked for each, plus pitfalls filed from earlier failures. Checking it takes
+one command; skipping it means rediscovering the schema and rewriting a
+statement a previous session already got right.
+
+```bash
+python3 <that skill's directory>/scripts/ask.py "<the user's question, in plain words>"
+```
+
+It needs a small config file the first time; `skardi-query-log`'s SKILL.md says
+what goes in it. Write it before running the command rather than skipping this
+step.
+
+- **One of the listed questions is the same question**: reuse its SQL, changing
+  only the parameters (a date, a limit), and run it through
+  `ask.py "<question>" --sql "<SQL>"`. Then go to step 4.
+- **None matches**: continue with step 1. When you have the query that answers
+  the question, run that final query through `ask.py "<question>" --sql "<SQL>"`
+  instead of `skardi query`, so the next session finds it. Peeks and schema
+  discovery stay on `skardi query`.
+- **A filed pitfall mentions a table you are about to use**: read it before
+  writing SQL.
+
+Whether a listed question is the same question is your judgement; the script
+only lists candidates. When `skardi-query-log` is not in your skill list, start at step 1.
 
 ### 1. Locate the data
 
