@@ -43,22 +43,27 @@ This skill is written and tested against **v0.5.0** of both CLI and server (the 
 > `skardi query --help` lists `--purpose` exactly when the build carries the
 > pair. Each command template below shows its v0.5.0 form on a commented line.
 
-Before the first query, run that capability check and, only when the audit pair
-is available, mint the one session id that every query in this task will reuse:
+Before the first query, run this block. It does the capability check, mints
+the one session id every query in this task will reuse (only when the audit pair
+is available), and, when `skardi-query-log` is installed next to this skill,
+asks its index whether this question has been answered before:
 
 ```bash
 if skardi query --help | grep -q -- '--purpose'; then
   SKARDI_SESSION=$(uuidgen 2>/dev/null || echo "sess-$(date +%s)-$$")
 fi
+ASK="<this skill's directory>/../skardi-query-log/scripts/ask.py"
+[ -f "$ASK" ] && python3 "$ASK" "<the user's question, in plain words>"
 ```
 
-Then, if `skardi-query-log` is in your skill list, invoke that skill now and
-run its `ask.py` with the user's question (step 0), before `skardi schema` or
-any other discovery: the answer may already be in its index.
+Read what the last line printed before running anything else. If it lists a
+question that is the same as this one, go straight to step 0 and reuse its SQL;
+no `skardi schema` is needed. If it printed nothing (`skardi-query-log` is not
+installed) or no candidate matches, go on to discovery.
 
 ## Rule zero: ask the server, not your memory
 
-Which tables exist, which pipelines are registered, what a column means, what is writable — these are **deployment facts**. They differ per server and change under you. Re-discover them at the start of every session; never carry them over from a previous conversation or from this file.
+Which tables exist, which pipelines are registered, what a column means, what is writable — these are **deployment facts**. They differ per server and change under you. Re-discover them in every session rather than carrying them over from a previous conversation or from this file. The one thing that comes before discovery is step 0: a question already filed in the `skardi-query-log` index comes with SQL that ran against this server, and running it again is the check.
 
 | Question | Command |
 |---|---|
@@ -93,7 +98,7 @@ Two consequences worth stating, because instructions further down lean on them:
 
 ### 0. Has this been asked before?
 
-**If `skardi-query-log` is in your skill list, invoke it before anything else in this flow.**
+**The opening block under Prerequisites already ran `ask.py` when `skardi-query-log` is installed; act on what it printed before anything else in this flow.**
 Its `ask.py` keeps an index of questions already answered and the SQL that
 worked for each, plus pitfalls filed from earlier failures. Checking it takes
 one command; skipping it means rediscovering the schema and rewriting a
